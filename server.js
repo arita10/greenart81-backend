@@ -69,6 +69,46 @@ app.post('/api/init-database', async (req, res) => {
   }
 });
 
+// Make user admin endpoint (one-time use for setup)
+app.post('/api/make-admin', async (req, res) => {
+  try {
+    const pool = require('./config/database');
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email is required',
+        code: 'MISSING_EMAIL'
+      });
+    }
+
+    const result = await pool.query(
+      'UPDATE users SET role = $1 WHERE email = $2 RETURNING id, email, name, role',
+      ['admin', email]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'User not found',
+        code: 'USER_NOT_FOUND'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0],
+      message: 'User promoted to admin successfully!'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
