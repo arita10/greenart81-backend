@@ -109,6 +109,42 @@ app.post('/api/make-admin', async (req, res) => {
   }
 });
 
+// Create working admin account (one-time setup)
+app.post('/api/setup-admin', async (req, res) => {
+  try {
+    const bcrypt = require('bcryptjs');
+    const pool = require('./config/database');
+
+    const email = 'admin@greenart81.com';
+    const password = 'admin123';
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Delete old admin if exists
+    await pool.query('DELETE FROM users WHERE email = $1', [email]);
+
+    // Create new admin with correct hashed password
+    const result = await pool.query(
+      'INSERT INTO users (email, password, name, phone, role) VALUES ($1, $2, $3, $4, $5) RETURNING id, email, name, role',
+      [email, hashedPassword, 'Admin User', '1234567890', 'admin']
+    );
+
+    res.json({
+      success: true,
+      data: result.rows[0],
+      message: 'Admin account created successfully!',
+      credentials: {
+        email: 'admin@greenart81.com',
+        password: 'admin123'
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
