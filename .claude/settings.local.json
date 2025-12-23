@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(npm run test-connection:*)",
+      "Bash(set NODE_TLS_REJECT_UNAUTHORIZED=0)",
+      "Bash(npm run init-db:*)",
+      "Bash(npm run reset-db:*)",
+      "Bash(npm start)",
+      "Bash(curl:*)",
+      "Bash(dir:*)"
+    ]
+  }
+}
