@@ -43,6 +43,32 @@ app.get('/', (req, res) => {
   });
 });
 
+// One-time database initialization endpoint
+app.post('/api/init-database', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const pool = require('./config/database');
+
+    const sqlFilePath = path.join(__dirname, 'config/db-init.sql');
+    const sql = fs.readFileSync(sqlFilePath, 'utf8');
+
+    await pool.query(sql);
+
+    res.json({
+      success: true,
+      message: 'Database initialized successfully! Tables created and sample data loaded.',
+      note: 'Default admin: admin@greenart81.com / admin123 - Please change password!'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      note: 'Database initialization failed. Check if tables already exist.'
+    });
+  }
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);

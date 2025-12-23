@@ -8,7 +8,11 @@
       "Bash(npm run reset-db:*)",
       "Bash(npm start)",
       "Bash(curl:*)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(git push:*)",
+      "Bash(node -e:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
