@@ -23,6 +23,7 @@ const wishlistRoutes = require('./routes/wishlistRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const searchRoutes = require('./routes/searchRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 
 app.get('/', (req, res) => {
   res.json({
@@ -154,6 +155,7 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/payment', paymentRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
