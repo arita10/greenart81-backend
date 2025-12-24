@@ -24,6 +24,7 @@ const reviewRoutes = require('./routes/reviewRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const searchRoutes = require('./routes/searchRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 app.get('/', (req, res) => {
   res.json({
@@ -39,7 +40,9 @@ app.get('/', (req, res) => {
       wishlist: '/api/wishlist',
       reviews: '/api/reviews',
       admin: '/api/admin',
-      search: '/api/search'
+      search: '/api/search',
+      payment: '/api/payment',
+      upload: '/api/upload'
     }
   });
 });
@@ -156,6 +159,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/upload', uploadRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
