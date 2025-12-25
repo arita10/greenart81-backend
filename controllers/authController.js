@@ -2,6 +2,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 const { successResponse, errorResponse } = require('../utils/response');
+const admin = require('../config/firebase');
 
 const register = async (req, res) => {
   try {
@@ -156,11 +157,92 @@ const changePassword = async (req, res) => {
   }
 };
 
+const firebaseGoogleLogin = async (req, res) => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      return errorResponse(res, 'Firebase ID token is required', 'MISSING_TOKEN', 400);
+    }
+
+    // Verify the Firebase ID token
+    let decodedToken;
+    try {
+      decodedToken = await admin.auth().verifyIdToken(idToken);
+    } catch (error) {
+      console.error('Firebase token verification error:', error);
+      return errorResponse(res, 'Invalid Firebase token', 'INVALID_TOKEN', 401);
+    }
+
+    const { email, name, picture, uid } = decodedToken;
+
+    if (!email) {
+      return errorResponse(res, 'Email not found in Firebase token', 'MISSING_EMAIL', 400);
+    }
+
+    // Check if user exists
+    const existingUser = await pool.query(
+      'SELECT * FROM users WHERE email = $1',
+      [email]
+    );
+
+    let user;
+
+    if (existingUser.rows.length > 0) {
+      // User exists - update Firebase UID and avatar if not set
+      user = existingUser.rows[0];
+
+      // Update firebase_uid if not already set
+      if (!user.firebase_uid) {
+        await pool.query(
+          'UPDATE users SET firebase_uid = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+          [uid, user.id]
+        );
+      }
+    } else {
+      // Create new user
+      const result = await pool.query(
+        `INSERT INTO users (email, name, firebase_uid, role, password)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, email, name, phone, address, role, is_active, created_at, updated_at`,
+        [email, name || 'User', uid, 'customer', 'firebase_auth'] // dummy password for firebase users
+      );
+      user = result.rows[0];
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRE }
+    );
+
+    // Return user data (excluding password)
+    const userData = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      phone: user.phone,
+      address: user.address,
+      role: user.role,
+      is_active: user.is_active,
+      created_at: user.created_at,
+      updated_at: user.updated_at
+    };
+
+    successResponse(res, { user: userData, token }, 'Google login successful', 200);
+  } catch (error) {
+    console.error('Firebase Google login error:', error);
+    errorResponse(res, 'Firebase authentication failed', 'AUTH_FAILED', 500);
+  }
+};
+
 module.exports = {
   register,
   login,
   logout,
   getMe,
   updateProfile,
-  changePassword
+  changePassword,
+  firebaseGoogleLogin
 };

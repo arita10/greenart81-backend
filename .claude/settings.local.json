@@ -12,7 +12,10 @@
       "Bash(git push:*)",
       "Bash(node -e:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(npm install:*)",
+      "Bash(node scripts/fix-admin.js:*)",
+      "Bash(node scripts/add-firebase-support.js:*)"
     ]
   }
 }
