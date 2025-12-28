@@ -12,6 +12,7 @@
     "fix-admin": "node scripts/fix-admin.js",
     "add-firebase": "node scripts/add-firebase-support.js",
     "add-payment": "node scripts/add-payment-table.js",
+    "add-qr-payment": "node scripts/add-qr-payment.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
