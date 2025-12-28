@@ -10,12 +10,20 @@ Complete test cases for all QR Payment endpoints using Postman, cURL, or automat
 
 We've created an automated test script that runs the entire QR payment workflow end-to-end.
 
-**Run the test:**
+**Prerequisites:**
+1. Make sure your backend server is running (local or deployed)
+2. Ensure QR payment migration has been run: `npm run add-qr-payment`
+
+**Test against local server:**
 ```bash
+# Start your backend server first
+npm start
+
+# In another terminal, run the test
 npm run test-qr-payment
 ```
 
-**Or with custom API URL:**
+**Test against deployed server (Render):**
 ```bash
 API_URL=https://greenart81-backend.onrender.com npm run test-qr-payment
 ```
