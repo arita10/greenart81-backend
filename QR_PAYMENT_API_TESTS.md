@@ -1,6 +1,67 @@
 # 🧪 QR Payment API Testing Guide
 
-Complete test cases for all QR Payment endpoints using Postman or cURL.
+Complete test cases for all QR Payment endpoints using Postman, cURL, or automated testing.
+
+---
+
+## 🚀 AUTOMATED TESTING (RECOMMENDED)
+
+### **Run Complete Payment Loop Test**
+
+We've created an automated test script that runs the entire QR payment workflow end-to-end.
+
+**Run the test:**
+```bash
+npm run test-qr-payment
+```
+
+**Or with custom API URL:**
+```bash
+API_URL=https://greenart81-backend.onrender.com npm run test-qr-payment
+```
+
+**What it tests:**
+1. ✅ Admin login
+2. ✅ Customer registration
+3. ✅ Admin creates QR code
+4. ✅ Get active QR codes (public endpoint)
+5. ✅ Customer creates order
+6. ✅ Customer uploads payment slip
+7. ✅ Verify order status → "pending_verification"
+8. ✅ Admin views pending payment slips
+9. ✅ Admin approves payment
+10. ✅ Verify order status → "completed" & "processing"
+11. ✅ Customer views approved slip
+12. ✅ Error handling (duplicate upload)
+13. ✅ Cleanup (delete test QR code)
+
+**Expected Output:**
+```
+🧪 QR Payment System - Full Loop Test
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+API URL: http://localhost:3000/api
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[TEST 1] Admin Login
+✅ Admin login successful
+ℹ  Admin token obtained
+
+[TEST 2] Register Customer
+✅ Customer registered successfully
+...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TEST SUMMARY: ✅ All 13 tests passed!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+**Test Script Location:** [scripts/test-qr-payment.js](scripts/test-qr-payment.js)
+
+---
+
+## 📖 MANUAL TESTING
+
+If you prefer manual testing with Postman or cURL, follow the steps below:
 
 ---
 
