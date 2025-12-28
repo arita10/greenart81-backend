@@ -15,7 +15,8 @@
       "Bash(git commit:*)",
       "Bash(npm install:*)",
       "Bash(node scripts/fix-admin.js:*)",
-      "Bash(node scripts/add-firebase-support.js:*)"
+      "Bash(node scripts/add-firebase-support.js:*)",
+      "Bash(node scripts/add-payment-table.js:*)"
     ]
   }
 }
