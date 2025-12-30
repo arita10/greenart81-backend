@@ -5,6 +5,7 @@ const categoryController = require('../controllers/categoryController');
 
 router.get('/', productController.getAllProducts);
 router.get('/featured', productController.getFeaturedProducts);
+router.get('/sliders', productController.getSliderProducts);
 router.get('/search', productController.searchProducts);
 router.get('/category/:category', productController.getProductsByCategory);
 router.get('/:id', productController.getProductById);

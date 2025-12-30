@@ -1,5 +1,20 @@
 const pool = require('../config/database');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response');
+const fs = require('fs');
+const path = require('path');
+
+// Helper function to transform product data for frontend compatibility
+const transformProduct = (product) => {
+  return {
+    ...product,
+    _id: product.id, // Add MongoDB-style _id for frontend compatibility
+    image: product.image_url || '', // Map image_url to image
+    stock: product.stock_quantity !== undefined ? product.stock_quantity : product.stock, // Handle both field names
+    category: product.category_name || product.category || '', // Ensure category is a string
+    price: parseFloat(product.price) || 0, // Ensure price is a number
+    stock_quantity: product.stock_quantity !== undefined ? product.stock_quantity : product.stock // Keep original field
+  };
+};
 
 const getAllProducts = async (req, res) => {
   try {
@@ -18,38 +33,167 @@ const getAllProducts = async (req, res) => {
       [limit, offset]
     );
 
-    paginatedResponse(res, result.rows, page, limit, total, 'Products retrieved successfully');
+    // Transform products for frontend compatibility
+    const transformedProducts = result.rows.map(transformProduct);
+
+    paginatedResponse(res, transformedProducts, page, limit, total, 'Products retrieved successfully');
   } catch (error) {
     console.error('Admin get all products error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
   }
 };
 
-const createProduct = async (req, res) => {
+const logDebug = (message, data) => {
   try {
-    const { name, description, price, stock, category_id, image_url, is_featured } = req.body;
+    const logPath = path.join(__dirname, '../debug_product_create.md');
+    const timestamp = new Date().toISOString();
+    const logEntry = `\n[${timestamp}] ${message}\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\`\n`;
+    fs.appendFileSync(logPath, logEntry);
+  } catch (err) {
+    console.error('Failed to write debug log:', err);
+  }
+};
+
+const createProduct = async (req, res) => {
+  const debugInfo = {
+    step: 'start',
+    received_keys: Object.keys(req.body),
+    headers_content_type: req.headers['content-type']
+  };
+
+  try {
+    // Normalize body keys to lower case for insensitive matching
+    const body = {};
+    for (const key in req.body) {
+      body[key.toLowerCase().trim()] = req.body[key];
+    }
+    
+    // Extract fields using normalized keys
+    const name = body.name;
+    const description = body.description;
+    const price = body.price;
+    const stock = body.stock || body.stock_quantity;
+    const is_featured = body.is_featured || body.featured;
+
+    // Smart Category Extraction
+    let categoryInput = body.category || body.category_id || body.categoryid || body.cat;
+    
+    // Smart Image Extraction
+    // Look for any key that looks like an image
+    let imageInput = body.image_url || body.image || body.imageurl || body.img || body.url;
+    
+    // If not found by direct key, search for ANY key containing "image" or "img"
+    if (!imageInput) {
+       const imageKey = Object.keys(body).find(k => k.includes('image') || k.includes('img'));
+       if (imageKey) imageInput = body[imageKey];
+    }
+
+    const finalImageUrl = imageInput || '';
+    
+    debugInfo.extracted = {
+      name,
+      price,
+      stock,
+      categoryInput,
+      finalImageUrl
+    };
 
     if (!name || !price) {
       return errorResponse(res, 'Name and price are required', 'MISSING_FIELDS', 400);
     }
 
+    // Resolve Category
+    let finalCategoryId = null;
+
+    if (categoryInput) {
+      // Check if input is a numeric ID
+      if (!isNaN(categoryInput) && parseInt(categoryInput) > 0) {
+         finalCategoryId = parseInt(categoryInput);
+         debugInfo.category_resolution = { type: 'id_provided', id: finalCategoryId };
+      } 
+      // Treat as name
+      else {
+        const categoryResult = await pool.query(
+          'SELECT id, name FROM categories WHERE name ILIKE $1 LIMIT 1',
+          [categoryInput]
+        );
+
+        if (categoryResult.rows.length > 0) {
+          finalCategoryId = categoryResult.rows[0].id;
+          debugInfo.category_resolution = { type: 'found_by_name', id: finalCategoryId, name: categoryResult.rows[0].name };
+        } else {
+          // Auto-create
+          const newCatResult = await pool.query(
+            'INSERT INTO categories (name, description, is_active) VALUES ($1, $2, true) RETURNING id',
+            [categoryInput, 'Auto-created category']
+          );
+          finalCategoryId = newCatResult.rows[0].id;
+          debugInfo.category_resolution = { type: 'created_new', id: finalCategoryId, name: categoryInput };
+        }
+      }
+    } else {
+       debugInfo.category_resolution = { type: 'none_provided' };
+    }
+
     const result = await pool.query(
       `INSERT INTO products (name, description, price, stock, category_id, image_url, is_featured)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [name, description, price, stock || 0, category_id, image_url, is_featured || false]
+      [name, description, parseFloat(price) || 0, stock || 0, finalCategoryId, finalImageUrl, is_featured || false]
     );
 
-    successResponse(res, result.rows[0], 'Product created successfully', 201);
+    // Get category name for the response
+    const productWithCategory = await pool.query(
+      `SELECT p.*, c.name as category_name
+       FROM products p
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE p.id = $1`,
+      [result.rows[0].id]
+    );
+
+    const transformed = transformProduct(productWithCategory.rows[0]);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Product created successfully',
+      data: transformed,
+      debug_info: debugInfo
+    });
+    
   } catch (error) {
-    console.error('Create product error:', error);
-    errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
+    console.error('❌ Create product error:', error);
+    errorResponse(res, 'Server error: ' + error.message, 'SERVER_ERROR', 500);
   }
 };
 
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price, stock, category_id, image_url, is_featured } = req.body;
+    const { name, description, price, stock, category_id, category, image_url, image, imageUrl, img, is_featured } = req.body;
+
+    // Robust image extraction
+    const finalImageUrl = image_url || image || imageUrl || img;
+
+    // Map category string to category_id
+    let finalCategoryId = category_id;
+
+    if (!finalCategoryId && category) {
+      // Look up category by name
+      const categoryResult = await pool.query(
+        'SELECT id FROM categories WHERE name ILIKE $1 LIMIT 1',
+        [category]
+      );
+
+      if (categoryResult.rows.length > 0) {
+        finalCategoryId = categoryResult.rows[0].id;
+      } else {
+        // Auto-create category on update too if missing
+        const newCatResult = await pool.query(
+          'INSERT INTO categories (name, description, is_active) VALUES ($1, $2, true) RETURNING id',
+          [category, 'Auto-created category']
+        );
+        finalCategoryId = newCatResult.rows[0].id;
+      }
+    }
 
     const result = await pool.query(
       `UPDATE products
@@ -63,14 +207,23 @@ const updateProduct = async (req, res) => {
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $8
        RETURNING *`,
-      [name, description, price, stock, category_id, image_url, is_featured, id]
+      [name, description, price, stock, finalCategoryId, finalImageUrl, is_featured, id]
     );
 
     if (result.rows.length === 0) {
       return errorResponse(res, 'Product not found', 'PRODUCT_NOT_FOUND', 404);
     }
 
-    successResponse(res, result.rows[0], 'Product updated successfully');
+    // Get category name for the response
+    const productWithCategory = await pool.query(
+      `SELECT p.*, c.name as category_name
+       FROM products p
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE p.id = $1`,
+      [id]
+    );
+
+    successResponse(res, transformProduct(productWithCategory.rows[0]), 'Product updated successfully');
   } catch (error) {
     console.error('Update product error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);

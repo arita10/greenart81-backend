@@ -1,6 +1,18 @@
 const pool = require('../config/database');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response');
 
+// Helper function to transform product data for frontend compatibility
+const transformProduct = (product) => {
+  return {
+    ...product,
+    _id: product.id, // Add MongoDB-style _id for frontend compatibility
+    image: product.image_url || '', // Map image_url to image
+    stock: product.stock || 0, // Ensure stock exists
+    category: product.category_name || product.category || '', // Ensure category is a string
+    price: parseFloat(product.price) || 0 // Ensure price is a number
+  };
+};
+
 const getAllProducts = async (req, res) => {
   try {
     const { category, search, page = 1, limit = 20 } = req.query;
@@ -31,7 +43,10 @@ const getAllProducts = async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    paginatedResponse(res, result.rows, page, limit, total, 'Products retrieved successfully');
+    // Transform products for frontend compatibility
+    const transformedProducts = result.rows.map(transformProduct);
+
+    paginatedResponse(res, transformedProducts, page, limit, total, 'Products retrieved successfully');
   } catch (error) {
     console.error('Get all products error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
@@ -62,7 +77,7 @@ const getProductById = async (req, res) => {
       review_count: parseInt(reviewsResult.rows[0].review_count) || 0
     };
 
-    successResponse(res, product, 'Product retrieved successfully');
+    successResponse(res, transformProduct(product), 'Product retrieved successfully');
   } catch (error) {
     console.error('Get product by ID error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
@@ -86,7 +101,8 @@ const getProductsByCategory = async (req, res) => {
       [`%${category}%`, limit, offset]
     );
 
-    paginatedResponse(res, result.rows, page, limit, total, 'Products retrieved successfully');
+    const transformedProducts = result.rows.map(transformProduct);
+    paginatedResponse(res, transformedProducts, page, limit, total, 'Products retrieved successfully');
   } catch (error) {
     console.error('Get products by category error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
@@ -102,7 +118,8 @@ const getFeaturedProducts = async (req, res) => {
       [limit]
     );
 
-    successResponse(res, result.rows, 'Featured products retrieved successfully');
+    const transformedProducts = result.rows.map(transformProduct);
+    successResponse(res, transformedProducts, 'Featured products retrieved successfully');
   } catch (error) {
     console.error('Get featured products error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
@@ -159,9 +176,28 @@ const searchProducts = async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    paginatedResponse(res, result.rows, page, limit, total, 'Search results retrieved successfully');
+    const transformedProducts = result.rows.map(transformProduct);
+    paginatedResponse(res, transformedProducts, page, limit, total, 'Search results retrieved successfully');
   } catch (error) {
     console.error('Search products error:', error);
+    errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
+  }
+};
+
+const getSliderProducts = async (req, res) => {
+  try {
+    const { limit = 5 } = req.query;
+
+    // Get featured products for slider, or latest products if no featured products
+    const result = await pool.query(
+      'SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.is_active = true AND (p.is_featured = true OR p.is_featured IS NULL) ORDER BY p.is_featured DESC NULLS LAST, p.created_at DESC LIMIT $1',
+      [limit]
+    );
+
+    const transformedProducts = result.rows.map(transformProduct);
+    successResponse(res, transformedProducts, 'Slider products retrieved successfully');
+  } catch (error) {
+    console.error('Get slider products error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
   }
 };
@@ -171,5 +207,6 @@ module.exports = {
   getProductById,
   getProductsByCategory,
   getFeaturedProducts,
-  searchProducts
+  searchProducts,
+  getSliderProducts
 };
