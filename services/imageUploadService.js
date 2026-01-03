@@ -1,50 +1,80 @@
-const axios = require('axios');
-const FormData = require('form-data');
+const { v2: cloudinary } = require('cloudinary');
+const streamifier = require('streamifier');
 
 class ImageUploadService {
   constructor() {
-    this.imgbbApiKey = process.env.IMGBB_API_KEY;
-    this.imgbbUrl = 'https://api.imgbb.com/1/upload';
+    // Configure Cloudinary
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dq0dbdqmo',
+      api_key: process.env.CLOUDINARY_API_KEY || '773623456949753',
+      api_secret: process.env.CLOUDINARY_API_SECRET
+    });
   }
 
   /**
-   * Upload image to ImgBB
+   * Upload image to Cloudinary
    * @param {Buffer} imageBuffer - Image file buffer from multer
    * @param {String} imageName - Original filename
    * @returns {Promise<Object>} - Returns image URLs
    */
-  async uploadToImgBB(imageBuffer, imageName) {
+  async uploadToCloudinary(imageBuffer, imageName) {
     try {
-      // Create form data
-      const formData = new FormData();
-      formData.append('image', imageBuffer.toString('base64'));
-      formData.append('name', imageName);
+      return new Promise((resolve, reject) => {
+        // Create upload stream
+        const uploadStream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'greenart81/products',
+            public_id: `product_${Date.now()}_${imageName.split('.')[0]}`,
+            resource_type: 'auto',
+            transformation: [
+              { width: 1000, height: 1000, crop: 'limit' },
+              { quality: 'auto', fetch_format: 'auto' }
+            ]
+          },
+          (error, result) => {
+            if (error) {
+              console.error('Cloudinary upload error:', error);
+              reject(new Error(`Cloudinary upload failed: ${error.message}`));
+            } else {
+              resolve({
+                success: true,
+                url: result.secure_url,
+                displayUrl: result.secure_url,
+                thumbUrl: cloudinary.url(result.public_id, {
+                  width: 200,
+                  height: 200,
+                  crop: 'fill',
+                  quality: 'auto',
+                  fetch_format: 'auto'
+                }),
+                mediumUrl: cloudinary.url(result.public_id, {
+                  width: 500,
+                  height: 500,
+                  crop: 'limit',
+                  quality: 'auto',
+                  fetch_format: 'auto'
+                }),
+                publicId: result.public_id,
+                format: result.format,
+                width: result.width,
+                height: result.height
+              });
+            }
+          }
+        );
 
-      // Upload to ImgBB
-      const response = await axios.post(
-        `${this.imgbbUrl}?key=${this.imgbbApiKey}`,
-        formData,
-        {
-          headers: formData.getHeaders()
-        }
-      );
-
-      if (response.data.success) {
-        return {
-          success: true,
-          url: response.data.data.url,
-          displayUrl: response.data.data.display_url,
-          thumbUrl: response.data.data.thumb.url,
-          mediumUrl: response.data.data.medium?.url || response.data.data.url,
-          deleteUrl: response.data.data.delete_url
-        };
-      } else {
-        throw new Error('ImgBB upload failed');
-      }
+        // Convert buffer to stream and pipe to Cloudinary
+        streamifier.createReadStream(imageBuffer).pipe(uploadStream);
+      });
     } catch (error) {
-      console.error('ImgBB upload error:', error.message);
+      console.error('Image upload error:', error.message);
       throw new Error(`Image upload failed: ${error.message}`);
     }
+  }
+
+  // Backward compatibility - keep the old method name
+  async uploadToImgBB(imageBuffer, imageName) {
+    return this.uploadToCloudinary(imageBuffer, imageName);
   }
 
   /**
@@ -55,13 +85,31 @@ class ImageUploadService {
   async uploadMultiple(files) {
     try {
       const uploadPromises = files.map(file =>
-        this.uploadToImgBB(file.buffer, file.originalname)
+        this.uploadToCloudinary(file.buffer, file.originalname)
       );
 
       const results = await Promise.all(uploadPromises);
       return results;
     } catch (error) {
       throw new Error(`Multiple upload failed: ${error.message}`);
+    }
+  }
+
+  /**
+   * Delete image from Cloudinary
+   * @param {String} publicId - Cloudinary public ID
+   * @returns {Promise<Object>}
+   */
+  async deleteImage(publicId) {
+    try {
+      const result = await cloudinary.uploader.destroy(publicId);
+      return {
+        success: result.result === 'ok',
+        message: result.result === 'ok' ? 'Image deleted successfully' : 'Image not found'
+      };
+    } catch (error) {
+      console.error('Cloudinary delete error:', error);
+      throw new Error(`Image deletion failed: ${error.message}`);
     }
   }
 }
