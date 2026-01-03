@@ -101,7 +101,7 @@ exports.uploadProductImage = async (req, res) => {
       });
     }
 
-    // Upload to ImgBB
+    // Upload to Cloudinary (via uploadToImgBB which now uses Cloudinary)
     const result = await imageUploadService.uploadToImgBB(
       req.file.buffer,
       `product_${Date.now()}_${req.file.originalname}`
@@ -121,6 +121,45 @@ exports.uploadProductImage = async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Product image upload failed',
+      code: 'UPLOAD_FAILED'
+    });
+  }
+};
+
+/**
+ * Upload payment slip image (for QR payment verification)
+ */
+exports.uploadPaymentSlip = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No payment slip image provided',
+        code: 'NO_FILE'
+      });
+    }
+
+    // Upload to Cloudinary with payment_slip folder
+    const result = await imageUploadService.uploadToCloudinary(
+      req.file.buffer,
+      `payment_slip_${Date.now()}_${req.file.originalname}`
+    );
+
+    res.json({
+      success: true,
+      data: {
+        url: result.url,
+        slipImageUrl: result.url,
+        thumbUrl: result.thumbUrl,
+        mediumUrl: result.mediumUrl
+      },
+      message: 'Payment slip uploaded successfully'
+    });
+  } catch (error) {
+    console.error('Payment slip upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Payment slip upload failed',
       code: 'UPLOAD_FAILED'
     });
   }

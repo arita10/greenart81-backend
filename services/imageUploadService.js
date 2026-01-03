@@ -15,16 +15,23 @@ class ImageUploadService {
    * Upload image to Cloudinary
    * @param {Buffer} imageBuffer - Image file buffer from multer
    * @param {String} imageName - Original filename
+   * @param {String} folder - Optional folder path (default: greenart81/products)
    * @returns {Promise<Object>} - Returns image URLs
    */
-  async uploadToCloudinary(imageBuffer, imageName) {
+  async uploadToCloudinary(imageBuffer, imageName, folder = 'greenart81/products') {
     try {
       return new Promise((resolve, reject) => {
+        // Determine public_id based on filename
+        const isPaymentSlip = imageName.includes('payment_slip');
+        const publicId = isPaymentSlip
+          ? imageName.split('.')[0]
+          : `product_${Date.now()}_${imageName.split('.')[0]}`;
+
         // Create upload stream
         const uploadStream = cloudinary.uploader.upload_stream(
           {
-            folder: 'greenart81/products',
-            public_id: `product_${Date.now()}_${imageName.split('.')[0]}`,
+            folder: isPaymentSlip ? 'greenart81/payment_slips' : folder,
+            public_id: publicId,
             resource_type: 'auto',
             transformation: [
               { width: 1000, height: 1000, crop: 'limit' },

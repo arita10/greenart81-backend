@@ -29,4 +29,12 @@ router.post(
   uploadController.uploadProductImage
 );
 
+// Upload payment slip image (any authenticated user)
+router.post(
+  '/payment-slip',
+  authenticateToken,
+  upload.single('slip'),
+  uploadController.uploadPaymentSlip
+);
+
 module.exports = router;
