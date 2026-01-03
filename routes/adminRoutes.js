@@ -17,6 +17,7 @@ router.put('/products/:id', adminProductController.updateProduct);
 router.delete('/products/:id', adminProductController.deleteProduct);
 router.put('/products/:id/stock', adminProductController.updateStock);
 router.put('/products/:id/toggle', adminProductController.toggleActiveStatus);
+router.put('/products/:id/toggle-slider', adminProductController.toggleSliderStatus);
 router.post('/products/bulk-upload', adminProductController.bulkUpload);
 
 router.get('/orders', adminOrderController.getAllOrders);

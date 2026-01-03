@@ -9,7 +9,9 @@ const transformProduct = (product) => {
     image: product.image_url || '', // Map image_url to image
     stock: product.stock || 0, // Ensure stock exists
     category: product.category_name || product.category || '', // Ensure category is a string
-    price: parseFloat(product.price) || 0 // Ensure price is a number
+    price: parseFloat(product.price) || 0, // Ensure price is a number
+    useAsSlider: product.use_as_slider || false, // Map use_as_slider to useAsSlider for frontend
+    use_as_slider: product.use_as_slider || false // Keep both naming conventions
   };
 };
 
@@ -188,11 +190,33 @@ const getSliderProducts = async (req, res) => {
   try {
     const { limit = 5 } = req.query;
 
-    // Get featured products for slider, or latest products if no featured products
+    // Get products marked for slider use
     const result = await pool.query(
-      'SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.is_active = true AND (p.is_featured = true OR p.is_featured IS NULL) ORDER BY p.is_featured DESC NULLS LAST, p.created_at DESC LIMIT $1',
+      `SELECT p.*, c.name as category_name
+       FROM products p
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE p.is_active = true
+       AND p.use_as_slider = true
+       ORDER BY p.created_at DESC
+       LIMIT $1`,
       [limit]
     );
+
+    // If no slider products found, fallback to featured products
+    if (result.rows.length === 0) {
+      const fallbackResult = await pool.query(
+        `SELECT p.*, c.name as category_name
+         FROM products p
+         LEFT JOIN categories c ON p.category_id = c.id
+         WHERE p.is_active = true
+         AND p.is_featured = true
+         ORDER BY p.created_at DESC
+         LIMIT $1`,
+        [limit]
+      );
+      const transformedProducts = fallbackResult.rows.map(transformProduct);
+      return successResponse(res, transformedProducts, 'Slider products retrieved successfully (featured fallback)');
+    }
 
     const transformedProducts = result.rows.map(transformProduct);
     successResponse(res, transformedProducts, 'Slider products retrieved successfully');

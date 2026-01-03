@@ -12,7 +12,9 @@ const transformProduct = (product) => {
     stock: product.stock_quantity !== undefined ? product.stock_quantity : product.stock, // Handle both field names
     category: product.category_name || product.category || '', // Ensure category is a string
     price: parseFloat(product.price) || 0, // Ensure price is a number
-    stock_quantity: product.stock_quantity !== undefined ? product.stock_quantity : product.stock // Keep original field
+    stock_quantity: product.stock_quantity !== undefined ? product.stock_quantity : product.stock, // Keep original field
+    useAsSlider: product.use_as_slider || false, // Map use_as_slider to useAsSlider for frontend
+    use_as_slider: product.use_as_slider || false // Keep both naming conventions
   };
 };
 
@@ -74,6 +76,7 @@ const createProduct = async (req, res) => {
     const price = body.price;
     const stock = body.stock || body.stock_quantity;
     const is_featured = body.is_featured || body.featured;
+    const use_as_slider = body.use_as_slider || body.useasslider || body.slider || false;
 
     // Smart Category Extraction
     let categoryInput = body.category || body.category_id || body.categoryid || body.cat;
@@ -136,9 +139,9 @@ const createProduct = async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO products (name, description, price, stock, category_id, image_url, is_featured)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [name, description, parseFloat(price) || 0, stock || 0, finalCategoryId, finalImageUrl, is_featured || false]
+      `INSERT INTO products (name, description, price, stock, category_id, image_url, is_featured, use_as_slider)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [name, description, parseFloat(price) || 0, stock || 0, finalCategoryId, finalImageUrl, is_featured || false, use_as_slider]
     );
 
     // Get category name for the response
@@ -168,10 +171,13 @@ const createProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price, stock, category_id, category, image_url, image, imageUrl, img, is_featured } = req.body;
+    const { name, description, price, stock, category_id, category, image_url, image, imageUrl, img, is_featured, use_as_slider, useAsSlider } = req.body;
 
     // Robust image extraction
     const finalImageUrl = image_url || image || imageUrl || img;
+
+    // Handle use_as_slider field
+    const finalUseAsSlider = use_as_slider !== undefined ? use_as_slider : (useAsSlider !== undefined ? useAsSlider : undefined);
 
     // Map category string to category_id
     let finalCategoryId = category_id;
@@ -204,10 +210,11 @@ const updateProduct = async (req, res) => {
            category_id = COALESCE($5, category_id),
            image_url = COALESCE($6, image_url),
            is_featured = COALESCE($7, is_featured),
+           use_as_slider = COALESCE($8, use_as_slider),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $8
+       WHERE id = $9
        RETURNING *`,
-      [name, description, price, stock, finalCategoryId, finalImageUrl, is_featured, id]
+      [name, description, price, stock, finalCategoryId, finalImageUrl, is_featured, finalUseAsSlider, id]
     );
 
     if (result.rows.length === 0) {
@@ -344,6 +351,35 @@ const bulkUpload = async (req, res) => {
   }
 };
 
+const toggleSliderStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      'UPDATE products SET use_as_slider = NOT use_as_slider, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return errorResponse(res, 'Product not found', 'PRODUCT_NOT_FOUND', 404);
+    }
+
+    // Get category name for the response
+    const productWithCategory = await pool.query(
+      `SELECT p.*, c.name as category_name
+       FROM products p
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE p.id = $1`,
+      [id]
+    );
+
+    successResponse(res, transformProduct(productWithCategory.rows[0]), 'Product slider status toggled successfully');
+  } catch (error) {
+    console.error('Toggle slider status error:', error);
+    errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
+  }
+};
+
 module.exports = {
   getAllProducts,
   createProduct,
@@ -351,5 +387,6 @@ module.exports = {
   deleteProduct,
   updateStock,
   toggleActiveStatus,
+  toggleSliderStatus,
   bulkUpload
 };
