@@ -220,11 +220,3 @@ exports.reorderProductImages = async (req, res) => {
     errorResponse(res, 'Failed to reorder product images', 'SERVER_ERROR', 500);
   }
 };
-
-module.exports = {
-  getProductImages,
-  addProductImages,
-  updateProductImage,
-  deleteProductImage,
-  reorderProductImages
-};
