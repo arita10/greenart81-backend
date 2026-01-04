@@ -1,3 +1,6 @@
+// Disable SSL certificate validation for Render.com database
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const pool = require('../config/database');
 
 async function queryDatabase() {

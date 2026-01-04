@@ -3,12 +3,45 @@ const { successResponse, errorResponse, paginatedResponse } = require('../utils/
 const fs = require('fs');
 const path = require('path');
 
+// Helper function to get product images
+const getProductImages = async (productId) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, image_url, thumb_url, medium_url, alt_text, is_primary, sort_order
+       FROM product_images
+       WHERE product_id = $1
+       ORDER BY sort_order ASC, created_at ASC`,
+      [productId]
+    );
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching product images:', error);
+    return [];
+  }
+};
+
 // Helper function to transform product data for frontend compatibility
-const transformProduct = (product) => {
+const transformProduct = async (product) => {
+  // Fetch all images for this product
+  const images = await getProductImages(product.id);
+
+  // Find primary image or use first one
+  const primaryImage = images.find(img => img.is_primary) || images[0];
+
   return {
     ...product,
     _id: product.id, // Add MongoDB-style _id for frontend compatibility
-    image: product.image_url || '', // Map image_url to image
+    image: primaryImage?.image_url || product.image_url || '', // Primary image or legacy
+    image_url: primaryImage?.image_url || product.image_url || '', // Keep both
+    images: images.map(img => ({
+      id: img.id,
+      url: img.image_url,
+      thumbUrl: img.thumb_url,
+      mediumUrl: img.medium_url,
+      altText: img.alt_text,
+      isPrimary: img.is_primary,
+      sortOrder: img.sort_order
+    })), // All images array
     stock: product.stock_quantity !== undefined ? product.stock_quantity : product.stock, // Handle both field names
     category: product.category_name || product.category || '', // Ensure category is a string
     price: parseFloat(product.price) || 0, // Ensure price is a number
@@ -36,7 +69,7 @@ const getAllProducts = async (req, res) => {
     );
 
     // Transform products for frontend compatibility
-    const transformedProducts = result.rows.map(transformProduct);
+    const transformedProducts = await Promise.all(result.rows.map(transformProduct));
 
     paginatedResponse(res, transformedProducts, page, limit, total, 'Products retrieved successfully');
   } catch (error) {
@@ -153,7 +186,7 @@ const createProduct = async (req, res) => {
       [result.rows[0].id]
     );
 
-    const transformed = transformProduct(productWithCategory.rows[0]);
+    const transformed = await transformProduct(productWithCategory.rows[0]);
     
     res.status(201).json({
       success: true,
@@ -230,7 +263,7 @@ const updateProduct = async (req, res) => {
       [id]
     );
 
-    successResponse(res, transformProduct(productWithCategory.rows[0]), 'Product updated successfully');
+    successResponse(res, await transformProduct(productWithCategory.rows[0]), 'Product updated successfully');
   } catch (error) {
     console.error('Update product error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
@@ -373,7 +406,7 @@ const toggleSliderStatus = async (req, res) => {
       [id]
     );
 
-    successResponse(res, transformProduct(productWithCategory.rows[0]), 'Product slider status toggled successfully');
+    successResponse(res, await transformProduct(productWithCategory.rows[0]), 'Product slider status toggled successfully');
   } catch (error) {
     console.error('Toggle slider status error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);

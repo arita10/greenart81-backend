@@ -26,6 +26,7 @@ const searchRoutes = require('./routes/searchRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const qrPaymentRoutes = require('./routes/qrPaymentRoutes');
+const productImagesRoutes = require('./routes/productImagesRoutes');
 
 app.get('/', (req, res) => {
   res.json({
@@ -152,6 +153,7 @@ app.post('/api/setup-admin', async (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/products', productRoutes);
+app.use('/api/products', productImagesRoutes); // Product images endpoints
 app.use('/api/categories', categoryRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);

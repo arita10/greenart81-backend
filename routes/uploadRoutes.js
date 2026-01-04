@@ -37,4 +37,13 @@ router.post(
   uploadController.uploadPaymentSlip
 );
 
+// Upload multiple product images (admin only) - up to 10 images
+router.post(
+  '/product/multiple',
+  authenticateToken,
+  isAdmin,
+  upload.array('images', 10),
+  uploadController.uploadMultipleProductImages
+);
+
 module.exports = router;

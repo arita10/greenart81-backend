@@ -164,3 +164,57 @@ exports.uploadPaymentSlip = async (req, res) => {
     });
   }
 };
+
+/**
+ * Upload multiple product images (up to 10)
+ */
+exports.uploadMultipleProductImages = async (req, res) => {
+  try {
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No product images provided',
+        code: 'NO_FILES'
+      });
+    }
+
+    if (req.files.length > 10) {
+      return res.status(400).json({
+        success: false,
+        error: 'Maximum 10 images allowed per product',
+        code: 'TOO_MANY_FILES'
+      });
+    }
+
+    // Upload all images to Cloudinary
+    const uploadPromises = req.files.map((file, index) =>
+      imageUploadService.uploadToCloudinary(
+        file.buffer,
+        `product_${Date.now()}_${index}_${file.originalname}`
+      )
+    );
+
+    const results = await Promise.all(uploadPromises);
+
+    res.json({
+      success: true,
+      data: {
+        images: results.map((r, index) => ({
+          url: r.url,
+          thumbUrl: r.thumbUrl,
+          mediumUrl: r.mediumUrl,
+          sortOrder: index
+        })),
+        count: results.length
+      },
+      message: `${results.length} product images uploaded successfully`
+    });
+  } catch (error) {
+    console.error('Multiple product images upload error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Product images upload failed',
+      code: 'UPLOAD_FAILED'
+    });
+  }
+};
