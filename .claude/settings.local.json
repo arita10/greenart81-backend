@@ -29,7 +29,9 @@
       "Bash(node scripts/check-latest-product.js:*)",
       "Bash(node scripts/add-slider-field.js:*)",
       "Bash(node scripts/add-qr-payment-table.js:*)",
-      "Bash(node scripts/add-product-images-table.js:*)"
+      "Bash(node scripts/add-product-images-table.js:*)",
+      "Bash(node scripts/check-product-images.js:*)",
+      "Bash(node test-api.js:*)"
     ]
   }
 }

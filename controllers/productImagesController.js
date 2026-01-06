@@ -16,6 +16,30 @@ exports.getProductImages = async (req, res) => {
       [productId]
     );
 
+    // Fallback: If no images in product_images table, check legacy image_url in products table
+    if (result.rows.length === 0) {
+      const productResult = await pool.query(
+        'SELECT id, image_url, name FROM products WHERE id = $1',
+        [productId]
+      );
+
+      if (productResult.rows.length > 0 && productResult.rows[0].image_url) {
+        const product = productResult.rows[0];
+        // Return simulated image object from legacy data
+        return successResponse(res, [{
+          id: -1, // Virtual ID
+          product_id: product.id,
+          image_url: product.image_url,
+          thumb_url: null,
+          medium_url: null,
+          alt_text: product.name,
+          sort_order: 0,
+          is_primary: true,
+          created_at: new Date()
+        }], 'Product images retrieved successfully (fallback)');
+      }
+    }
+
     successResponse(res, result.rows, 'Product images retrieved successfully');
   } catch (error) {
     console.error('Get product images error:', error);
