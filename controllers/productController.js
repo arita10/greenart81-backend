@@ -18,6 +18,40 @@ const getProductImages = async (productId) => {
   }
 };
 
+// Helper function to calculate discount and sale price
+const calculateDiscount = (product) => {
+  const price = parseFloat(product.price) || 0;
+  const discountPercentage = parseFloat(product.discount_percentage) || 0;
+
+  // Check if sale is active (if dates are set)
+  const now = new Date();
+  const saleStartDate = product.sale_start_date ? new Date(product.sale_start_date) : null;
+  const saleEndDate = product.sale_end_date ? new Date(product.sale_end_date) : null;
+
+  let isOnSale = product.is_on_sale || false;
+
+  // Check date-based sale validity
+  if (saleStartDate && now < saleStartDate) {
+    isOnSale = false; // Sale hasn't started yet
+  }
+  if (saleEndDate && now > saleEndDate) {
+    isOnSale = false; // Sale has ended
+  }
+
+  // Calculate sale price
+  const salePrice = discountPercentage > 0 && isOnSale
+    ? price * (1 - discountPercentage / 100)
+    : price;
+
+  return {
+    originalPrice: price,
+    salePrice: parseFloat(salePrice.toFixed(2)),
+    discountPercentage: isOnSale ? discountPercentage : 0,
+    discountAmount: isOnSale ? parseFloat((price - salePrice).toFixed(2)) : 0,
+    isOnSale: isOnSale && discountPercentage > 0
+  };
+};
+
 // Helper function to transform product data for frontend compatibility
 const transformProduct = async (product) => {
   // Fetch all images for this product
@@ -25,6 +59,9 @@ const transformProduct = async (product) => {
 
   // Find primary image or use first one
   const primaryImage = images.find(img => img.is_primary) || images[0];
+
+  // Calculate discount information
+  const discount = calculateDiscount(product);
 
   return {
     ...product,
@@ -42,7 +79,12 @@ const transformProduct = async (product) => {
     })), // All images array
     stock: product.stock || 0, // Ensure stock exists
     category: product.category_name || product.category || '', // Ensure category is a string
-    price: parseFloat(product.price) || 0, // Ensure price is a number
+    price: discount.originalPrice, // Original price
+    originalPrice: discount.originalPrice, // Explicit original price
+    salePrice: discount.salePrice, // Sale price (same as price if no discount)
+    discountPercentage: discount.discountPercentage, // Discount %
+    discountAmount: discount.discountAmount, // Amount saved
+    isOnSale: discount.isOnSale, // Is currently on sale
     useAsSlider: product.use_as_slider || false, // Map use_as_slider to useAsSlider for frontend
     use_as_slider: product.use_as_slider || false // Keep both naming conventions
   };
