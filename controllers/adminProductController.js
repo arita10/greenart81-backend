@@ -152,6 +152,12 @@ const createProduct = async (req, res) => {
     const stock = body.stock || body.stock_quantity;
     const is_featured = body.is_featured || body.featured;
     const use_as_slider = body.use_as_slider || body.useasslider || body.slider || false;
+    
+    // Discount fields
+    const discount_percentage = body.discount_percentage || body.discount || 0;
+    const is_on_sale = body.is_on_sale || body.isonsale || body.onsale || false;
+    const sale_start_date = body.sale_start_date || body.salestartdate || null;
+    const sale_end_date = body.sale_end_date || body.saleenddate || null;
 
     // Smart Category Extraction
     let categoryInput = body.category || body.category_id || body.categoryid || body.cat;
@@ -214,9 +220,22 @@ const createProduct = async (req, res) => {
     }
 
     const result = await pool.query(
-      `INSERT INTO products (name, description, price, stock, category_id, image_url, is_featured, use_as_slider)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [name, description, parseFloat(price) || 0, stock || 0, finalCategoryId, finalImageUrl, is_featured || false, use_as_slider]
+      `INSERT INTO products (name, description, price, stock, category_id, image_url, is_featured, use_as_slider, discount_percentage, is_on_sale, sale_start_date, sale_end_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
+      [
+        name, 
+        description, 
+        parseFloat(price) || 0, 
+        stock || 0, 
+        finalCategoryId, 
+        finalImageUrl, 
+        is_featured || false, 
+        use_as_slider,
+        parseFloat(discount_percentage) || 0,
+        is_on_sale,
+        sale_start_date,
+        sale_end_date
+      ]
     );
 
     // Get category name for the response
@@ -246,7 +265,24 @@ const createProduct = async (req, res) => {
 const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, description, price, stock, category_id, category, image_url, image, imageUrl, img, is_featured, use_as_slider, useAsSlider } = req.body;
+
+    // Normalize body keys to lowercase for flexible field name matching
+    const body = {};
+    for (const key in req.body) {
+      body[key.toLowerCase().trim()] = req.body[key];
+    }
+
+    const {
+      name, description, price, stock, category_id, category,
+      image_url, image, imageUrl, img,
+      is_featured, use_as_slider, useAsSlider
+    } = req.body;
+
+    // Extract discount fields with fallback to camelCase variations
+    const discount_percentage = body.discount_percentage ?? body.discountpercentage;
+    const is_on_sale = body.is_on_sale ?? body.isonsale ?? body.onsale;
+    const sale_start_date = body.sale_start_date ?? body.salestartdate;
+    const sale_end_date = body.sale_end_date ?? body.saleenddate;
 
     // Robust image extraction
     const finalImageUrl = image_url || image || imageUrl || img;
@@ -286,10 +322,28 @@ const updateProduct = async (req, res) => {
            image_url = COALESCE($6, image_url),
            is_featured = COALESCE($7, is_featured),
            use_as_slider = COALESCE($8, use_as_slider),
+           discount_percentage = COALESCE($9, discount_percentage),
+           is_on_sale = COALESCE($10, is_on_sale),
+           sale_start_date = COALESCE($11, sale_start_date),
+           sale_end_date = COALESCE($12, sale_end_date),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9
+       WHERE id = $13
        RETURNING *`,
-      [name, description, price, stock, finalCategoryId, finalImageUrl, is_featured, finalUseAsSlider, id]
+      [
+        name, 
+        description, 
+        price, 
+        stock, 
+        finalCategoryId, 
+        finalImageUrl, 
+        is_featured, 
+        finalUseAsSlider, 
+        discount_percentage,
+        is_on_sale,
+        sale_start_date,
+        sale_end_date,
+        id
+      ]
     );
 
     if (result.rows.length === 0) {
