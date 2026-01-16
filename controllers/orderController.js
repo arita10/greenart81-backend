@@ -110,13 +110,36 @@ const createOrder = async (req, res) => {
     await client.query('BEGIN');
 
     // Normalize items array to handle both camelCase and snake_case
-    const normalizedItems = items.map(item => {
-      const product_id = item.product_id ?? item.productId ?? item.id;
-      const quantity = item.quantity ?? item.qty;
-      const price = item.price;
+    const normalizedItems = items.map((item, index) => {
+      // Try multiple variations of product ID field
+      const product_id = item.product_id ?? item.productId ?? item.id ?? item.product?.id ?? item._id;
+      const quantity = item.quantity ?? item.qty ?? 1;
+      const price = item.price ?? item.salePrice ?? item.originalPrice ?? 0;
+
+      console.log(`Item ${index}:`, {
+        originalItem: item,
+        extracted: { product_id, quantity, price }
+      });
+
+      if (!product_id) {
+        console.error(`❌ Product ID missing for item ${index}:`, item);
+      }
 
       return { product_id, quantity, price };
     });
+
+    // Validate all items have product_id before starting transaction
+    for (let i = 0; i < normalizedItems.length; i++) {
+      if (!normalizedItems[i].product_id) {
+        console.error(`❌ Missing product_id in item ${i}:`, items[i]);
+        return errorResponse(
+          res,
+          `Missing product ID for item at index ${i}. Please ensure each item has 'productId' or 'product_id' field.`,
+          'MISSING_PRODUCT_ID',
+          400
+        );
+      }
+    }
 
     for (const item of normalizedItems) {
       const productResult = await client.query(
