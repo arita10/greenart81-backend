@@ -3,7 +3,10 @@ const { successResponse, errorResponse } = require('../utils/response');
 
 const getAllCategories = async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM categories ORDER BY name ASC');
+    // Only return active categories (exclude soft-deleted ones)
+    const result = await pool.query(
+      'SELECT * FROM categories WHERE is_active = true ORDER BY name ASC'
+    );
 
     successResponse(res, result.rows, 'Categories retrieved successfully');
   } catch (error) {
@@ -63,15 +66,20 @@ const deleteCategory = async (req, res) => {
   try {
     const { id } = req.params;
 
+    console.log(`🗑️  Soft-deleting category with ID: ${id}`);
+
+    // Soft delete: mark as inactive instead of hard delete
     const result = await pool.query(
       'UPDATE categories SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
       [id]
     );
 
     if (result.rows.length === 0) {
+      console.log(`❌ Category with ID ${id} not found`);
       return errorResponse(res, 'Category not found', 'CATEGORY_NOT_FOUND', 404);
     }
 
+    console.log(`✅ Category ${id} marked as inactive (soft-deleted)`);
     successResponse(res, result.rows[0], 'Category deleted successfully');
   } catch (error) {
     console.error('Delete category error:', error);
