@@ -69,19 +69,56 @@ const createOrder = async (req, res) => {
   const client = await pool.connect();
 
   try {
-    const { items, shipping_address, payment_method, total_amount } = req.body;
+    // Normalize body keys to lowercase for flexible field name matching
+    const body = {};
+    for (const key in req.body) {
+      body[key.toLowerCase().trim()] = req.body[key];
+    }
+
+    // Extract items directly from req.body (case-sensitive)
+    const items = req.body.items || req.body.Items;
+
+    // Extract fields with fallback to camelCase variations
+    const shipping_address = body.shipping_address ?? body.shippingaddress ?? req.body.shippingAddress;
+    const payment_method = body.payment_method ?? body.paymentmethod ?? req.body.paymentMethod;
+    const total_amount = body.total_amount ?? body.totalamount ?? req.body.totalAmount;
+
+    // Log received data for debugging
+    console.log('📦 Order creation request:', {
+      hasItems: !!items,
+      itemsCount: items?.length,
+      hasShippingAddress: !!shipping_address,
+      hasPaymentMethod: !!payment_method,
+      hasTotalAmount: !!total_amount,
+      receivedKeys: Object.keys(req.body)
+    });
 
     if (!items || !Array.isArray(items) || items.length === 0) {
+      console.log('❌ Items validation failed:', items);
       return errorResponse(res, 'Items are required', 'MISSING_FIELDS', 400);
     }
 
     if (!shipping_address || !payment_method || !total_amount) {
+      console.log('❌ Required fields missing:', {
+        shipping_address,
+        payment_method,
+        total_amount
+      });
       return errorResponse(res, 'Shipping address, payment method, and total amount are required', 'MISSING_FIELDS', 400);
     }
 
     await client.query('BEGIN');
 
-    for (const item of items) {
+    // Normalize items array to handle both camelCase and snake_case
+    const normalizedItems = items.map(item => {
+      const product_id = item.product_id ?? item.productId ?? item.id;
+      const quantity = item.quantity ?? item.qty;
+      const price = item.price;
+
+      return { product_id, quantity, price };
+    });
+
+    for (const item of normalizedItems) {
       const productResult = await client.query(
         'SELECT stock FROM products WHERE id = $1 FOR UPDATE',
         [item.product_id]
@@ -105,7 +142,7 @@ const createOrder = async (req, res) => {
 
     const order = orderResult.rows[0];
 
-    for (const item of items) {
+    for (const item of normalizedItems) {
       await client.query(
         'INSERT INTO order_items (order_id, product_id, quantity, price) VALUES ($1, $2, $3, $4)',
         [order.id, item.product_id, item.quantity, item.price]
@@ -116,6 +153,8 @@ const createOrder = async (req, res) => {
         [item.quantity, item.product_id]
       );
     }
+
+    console.log('✅ Order created successfully:', order.id);
 
     await client.query('DELETE FROM cart WHERE user_id = $1', [req.user.id]);
 
