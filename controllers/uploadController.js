@@ -131,7 +131,18 @@ exports.uploadProductImage = async (req, res) => {
  */
 exports.uploadPaymentSlip = async (req, res) => {
   try {
+    console.log('📤 Payment slip upload request received');
+    console.log('File info:', {
+      hasFile: !!req.file,
+      fieldname: req.file?.fieldname,
+      originalname: req.file?.originalname,
+      mimetype: req.file?.mimetype,
+      size: req.file?.size,
+      bufferLength: req.file?.buffer?.length
+    });
+
     if (!req.file) {
+      console.log('❌ No file provided in request');
       return res.status(400).json({
         success: false,
         error: 'No payment slip image provided',
@@ -139,11 +150,23 @@ exports.uploadPaymentSlip = async (req, res) => {
       });
     }
 
+    // Check Cloudinary configuration
+    const cloudinaryConfigured = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;
+    console.log('Cloudinary configured:', cloudinaryConfigured);
+    console.log('CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME ? 'set' : 'NOT SET');
+    console.log('CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY ? 'set' : 'NOT SET');
+    console.log('CLOUDINARY_API_SECRET:', process.env.CLOUDINARY_API_SECRET ? 'set' : 'NOT SET');
+
     // Upload to Cloudinary with payment_slip folder
+    const filename = `payment_slip_${Date.now()}_${req.file.originalname}`;
+    console.log('Uploading to Cloudinary with filename:', filename);
+
     const result = await imageUploadService.uploadToCloudinary(
       req.file.buffer,
-      `payment_slip_${Date.now()}_${req.file.originalname}`
+      filename
     );
+
+    console.log('✅ Payment slip uploaded successfully:', result.url);
 
     res.json({
       success: true,
@@ -156,11 +179,13 @@ exports.uploadPaymentSlip = async (req, res) => {
       message: 'Payment slip uploaded successfully'
     });
   } catch (error) {
-    console.error('Payment slip upload error:', error);
+    console.error('❌ Payment slip upload error:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({
       success: false,
       error: error.message || 'Payment slip upload failed',
-      code: 'UPLOAD_FAILED'
+      code: 'UPLOAD_FAILED',
+      details: process.env.NODE_ENV !== 'production' ? error.stack : undefined
     });
   }
 };
