@@ -7,7 +7,7 @@ class ImageUploadService {
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'dq0dbdqmo',
       api_key: process.env.CLOUDINARY_API_KEY || '773623456949753',
-      api_secret: process.env.CLOUDINARY_API_SECRET
+      api_secret: process.env.CLOUDINARY_API_SECRET || 'N2j0s3ZHkyVidjKe3f923kJ1ZgE'
     });
   }
 
