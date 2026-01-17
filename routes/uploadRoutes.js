@@ -30,10 +30,19 @@ router.post(
 );
 
 // Upload payment slip image (any authenticated user)
+// Accepts field names: 'slip', 'image', 'file', 'paymentSlip'
 router.post(
   '/payment-slip',
   authenticateToken,
-  upload.single('slip'),
+  upload.any(),  // Accept any field name
+  (req, res, next) => {
+    // If files were uploaded with any() middleware, get the first one
+    if (req.files && req.files.length > 0) {
+      req.file = req.files[0];
+      console.log('📎 File received with field name:', req.file.fieldname);
+    }
+    next();
+  },
   uploadController.uploadPaymentSlip
 );
 

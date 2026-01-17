@@ -173,8 +173,45 @@ app.use((req, res) => {
   });
 });
 
+// Global error handler with multer error handling
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
+  console.error('❌ Global error handler:', err);
+  console.error('Error name:', err.name);
+  console.error('Error message:', err.message);
+  console.error('Error stack:', err.stack);
+
+  // Handle multer errors
+  if (err.name === 'MulterError') {
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({
+        success: false,
+        error: 'File size too large. Maximum allowed is 5MB.',
+        code: 'FILE_TOO_LARGE'
+      });
+    }
+    if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return res.status(400).json({
+        success: false,
+        error: 'Unexpected file field name.',
+        code: 'UNEXPECTED_FIELD'
+      });
+    }
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+      code: err.code
+    });
+  }
+
+  // Handle file type errors
+  if (err.message && err.message.includes('Only image files are allowed')) {
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+      code: 'INVALID_FILE_TYPE'
+    });
+  }
+
   res.status(err.status || 500).json({
     success: false,
     error: err.message || 'Internal server error',
