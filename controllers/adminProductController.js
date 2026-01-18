@@ -65,13 +65,17 @@ const transformProduct = async (product) => {
   // Calculate discount information
   const discount = calculateDiscount(product);
 
+  // Ensure ID is always a string for frontend consistency
+  const stringId = String(product.id);
+
   return {
     ...product,
-    _id: product.id, // Add MongoDB-style _id for frontend compatibility
+    id: stringId, // Ensure ID is string
+    _id: stringId, // Add MongoDB-style _id for frontend compatibility
     image: primaryImage?.image_url || product.image_url || '', // Primary image or legacy
     image_url: primaryImage?.image_url || product.image_url || '', // Keep both
     images: images.map(img => ({
-      id: img.id,
+      id: String(img.id),
       url: img.image_url,
       thumbUrl: img.thumb_url,
       mediumUrl: img.medium_url,
@@ -98,13 +102,16 @@ const getAllProducts = async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
-    const countResult = await pool.query('SELECT COUNT(*) FROM products');
+    // Only count active products (exclude soft-deleted)
+    const countResult = await pool.query('SELECT COUNT(*) FROM products WHERE is_active = true');
     const total = parseInt(countResult.rows[0].count);
 
+    // Only return active products (exclude soft-deleted)
     const result = await pool.query(
       `SELECT p.*, c.name as category_name
        FROM products p
        LEFT JOIN categories c ON p.category_id = c.id
+       WHERE p.is_active = true
        ORDER BY p.created_at DESC
        LIMIT $1 OFFSET $2`,
       [limit, offset]
@@ -116,6 +123,31 @@ const getAllProducts = async (req, res) => {
     paginatedResponse(res, transformedProducts, page, limit, total, 'Products retrieved successfully');
   } catch (error) {
     console.error('Admin get all products error:', error);
+    errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
+  }
+};
+
+// Get single product by ID (admin)
+const getProductById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `SELECT p.*, c.name as category_name
+       FROM products p
+       LEFT JOIN categories c ON p.category_id = c.id
+       WHERE p.id = $1`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return errorResponse(res, 'Product not found', 'PRODUCT_NOT_FOUND', 404);
+    }
+
+    const transformed = await transformProduct(result.rows[0]);
+    successResponse(res, transformed, 'Product retrieved successfully');
+  } catch (error) {
+    console.error('Admin get product by ID error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
   }
 };
@@ -266,6 +298,8 @@ const updateProduct = async (req, res) => {
   try {
     const { id } = req.params;
 
+    console.log(`📝 Updating product ${id}:`, Object.keys(req.body));
+
     // Normalize body keys to lowercase for flexible field name matching
     const body = {};
     for (const key in req.body) {
@@ -283,6 +317,9 @@ const updateProduct = async (req, res) => {
     const is_on_sale = body.is_on_sale ?? body.isonsale ?? body.onsale;
     const sale_start_date = body.sale_start_date ?? body.salestartdate;
     const sale_end_date = body.sale_end_date ?? body.saleenddate;
+
+    // Handle images array if provided (for multiple images)
+    const imagesArray = req.body.images || body.images;
 
     // Robust image extraction
     const finalImageUrl = image_url || image || imageUrl || img;
@@ -330,14 +367,14 @@ const updateProduct = async (req, res) => {
        WHERE id = $13
        RETURNING *`,
       [
-        name, 
-        description, 
-        price, 
-        stock, 
-        finalCategoryId, 
-        finalImageUrl, 
-        is_featured, 
-        finalUseAsSlider, 
+        name,
+        description,
+        price,
+        stock,
+        finalCategoryId,
+        finalImageUrl,
+        is_featured,
+        finalUseAsSlider,
         discount_percentage,
         is_on_sale,
         sale_start_date,
@@ -350,6 +387,33 @@ const updateProduct = async (req, res) => {
       return errorResponse(res, 'Product not found', 'PRODUCT_NOT_FOUND', 404);
     }
 
+    // Handle images array update if provided
+    if (imagesArray && Array.isArray(imagesArray)) {
+      console.log(`🖼️ Updating images array for product ${id}:`, imagesArray.length, 'images');
+
+      // Delete existing images for this product
+      await pool.query('DELETE FROM product_images WHERE product_id = $1', [id]);
+
+      // Insert new images
+      for (let i = 0; i < imagesArray.length; i++) {
+        const img = imagesArray[i];
+        const imageUrl = typeof img === 'string' ? img : (img.url || img.image_url);
+        const thumbUrl = typeof img === 'string' ? null : (img.thumbUrl || img.thumb_url);
+        const mediumUrl = typeof img === 'string' ? null : (img.mediumUrl || img.medium_url);
+        const altText = typeof img === 'string' ? null : (img.altText || img.alt_text);
+        const isPrimary = i === 0; // First image is primary
+
+        if (imageUrl) {
+          await pool.query(
+            `INSERT INTO product_images (product_id, image_url, thumb_url, medium_url, alt_text, sort_order, is_primary)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [id, imageUrl, thumbUrl, mediumUrl, altText, i, isPrimary]
+          );
+        }
+      }
+      console.log(`✅ Images array updated for product ${id}`);
+    }
+
     // Get category name for the response
     const productWithCategory = await pool.query(
       `SELECT p.*, c.name as category_name
@@ -359,6 +423,7 @@ const updateProduct = async (req, res) => {
       [id]
     );
 
+    console.log(`✅ Product ${id} updated successfully`);
     successResponse(res, await transformProduct(productWithCategory.rows[0]), 'Product updated successfully');
   } catch (error) {
     console.error('Update product error:', error);
@@ -370,14 +435,19 @@ const deleteProduct = async (req, res) => {
   try {
     const { id } = req.params;
 
+    console.log(`🗑️ Soft-deleting product with ID: ${id}`);
+
     const result = await pool.query(
       'UPDATE products SET is_active = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
       [id]
     );
 
     if (result.rows.length === 0) {
+      console.log(`❌ Product with ID ${id} not found`);
       return errorResponse(res, 'Product not found', 'PRODUCT_NOT_FOUND', 404);
     }
+
+    console.log(`✅ Product ${id} marked as inactive (soft-deleted)`);
 
     successResponse(res, result.rows[0], 'Product deleted successfully');
   } catch (error) {
@@ -511,6 +581,7 @@ const toggleSliderStatus = async (req, res) => {
 
 module.exports = {
   getAllProducts,
+  getProductById,
   createProduct,
   updateProduct,
   deleteProduct,

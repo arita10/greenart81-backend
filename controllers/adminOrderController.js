@@ -1,6 +1,36 @@
 const pool = require('../config/database');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response');
 
+// Helper function to transform order data for frontend consistency
+const transformOrder = (order, items = null) => {
+  const transformed = {
+    ...order,
+    id: String(order.id), // Ensure ID is string
+    _id: String(order.id), // MongoDB-style _id for frontend compatibility
+    userId: String(order.user_id),
+    totalAmount: parseFloat(order.total_amount) || 0,
+    shippingAddress: order.shipping_address,
+    paymentMethod: order.payment_method,
+    customerName: order.customer_name,
+    customerEmail: order.customer_email,
+    customerPhone: order.customer_phone,
+    createdAt: order.created_at,
+    updatedAt: order.updated_at
+  };
+
+  if (items) {
+    transformed.items = items.map(item => ({
+      ...item,
+      id: String(item.id),
+      orderId: String(item.order_id),
+      productId: String(item.product_id),
+      price: parseFloat(item.price) || 0
+    }));
+  }
+
+  return transformed;
+};
+
 const getAllOrders = async (req, res) => {
   try {
     const { status, page = 1, date_from, date_to } = req.query;
@@ -41,7 +71,10 @@ const getAllOrders = async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    paginatedResponse(res, result.rows, page, limit, total, 'Orders retrieved successfully');
+    // Transform orders for frontend consistency
+    const transformedOrders = result.rows.map(order => transformOrder(order));
+
+    paginatedResponse(res, transformedOrders, page, limit, total, 'Orders retrieved successfully');
   } catch (error) {
     console.error('Admin get all orders error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
@@ -72,10 +105,8 @@ const getOrderById = async (req, res) => {
       [id]
     );
 
-    const order = {
-      ...orderResult.rows[0],
-      items: itemsResult.rows
-    };
+    // Transform order with items for frontend consistency
+    const order = transformOrder(orderResult.rows[0], itemsResult.rows);
 
     successResponse(res, order, 'Order retrieved successfully');
   } catch (error) {
@@ -104,7 +135,8 @@ const updateOrderStatus = async (req, res) => {
       return errorResponse(res, 'Order not found', 'ORDER_NOT_FOUND', 404);
     }
 
-    successResponse(res, result.rows[0], 'Order status updated successfully');
+    // Transform order for frontend consistency
+    successResponse(res, transformOrder(result.rows[0]), 'Order status updated successfully');
   } catch (error) {
     console.error('Update order status error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);

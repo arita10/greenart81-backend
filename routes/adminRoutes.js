@@ -12,6 +12,7 @@ const adminReviewController = require('../controllers/adminReviewController');
 router.use(authenticateToken, isAdmin);
 
 router.get('/products', adminProductController.getAllProducts);
+router.get('/products/:id', adminProductController.getProductById);
 router.post('/products', adminProductController.createProduct);
 router.put('/products/:id', adminProductController.updateProduct);
 router.delete('/products/:id', adminProductController.deleteProduct);

@@ -1,6 +1,33 @@
 const pool = require('../config/database');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response');
 
+// Helper function to transform order data for frontend consistency
+const transformOrder = (order, items = null) => {
+  const transformed = {
+    ...order,
+    id: String(order.id), // Ensure ID is string
+    _id: String(order.id), // MongoDB-style _id for frontend compatibility
+    userId: String(order.user_id),
+    totalAmount: parseFloat(order.total_amount) || 0,
+    shippingAddress: order.shipping_address,
+    paymentMethod: order.payment_method,
+    createdAt: order.created_at,
+    updatedAt: order.updated_at
+  };
+
+  if (items) {
+    transformed.items = items.map(item => ({
+      ...item,
+      id: String(item.id),
+      orderId: String(item.order_id),
+      productId: String(item.product_id),
+      price: parseFloat(item.price) || 0
+    }));
+  }
+
+  return transformed;
+};
+
 const getMyOrders = async (req, res) => {
   try {
     const { status, page = 1, limit = 10 } = req.query;
@@ -25,7 +52,10 @@ const getMyOrders = async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    paginatedResponse(res, result.rows, page, limit, total, 'Orders retrieved successfully');
+    // Transform orders for frontend consistency
+    const transformedOrders = result.rows.map(order => transformOrder(order));
+
+    paginatedResponse(res, transformedOrders, page, limit, total, 'Orders retrieved successfully');
   } catch (error) {
     console.error('Get my orders error:', error);
     errorResponse(res, 'Server error', 'SERVER_ERROR', 500);
@@ -53,10 +83,8 @@ const getOrderById = async (req, res) => {
       [id]
     );
 
-    const order = {
-      ...orderResult.rows[0],
-      items: itemsResult.rows
-    };
+    // Transform order with items for frontend consistency
+    const order = transformOrder(orderResult.rows[0], itemsResult.rows);
 
     successResponse(res, order, 'Order retrieved successfully');
   } catch (error) {
@@ -183,7 +211,8 @@ const createOrder = async (req, res) => {
 
     await client.query('COMMIT');
 
-    successResponse(res, order, 'Order created successfully', 201);
+    // Transform order for frontend consistency
+    successResponse(res, transformOrder(order), 'Order created successfully', 201);
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Create order error:', error);
@@ -235,7 +264,8 @@ const cancelOrder = async (req, res) => {
 
     await client.query('COMMIT');
 
-    successResponse(res, result.rows[0], 'Order cancelled successfully');
+    // Transform order for frontend consistency
+    successResponse(res, transformOrder(result.rows[0]), 'Order cancelled successfully');
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Cancel order error:', error);
