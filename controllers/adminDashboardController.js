@@ -117,15 +117,17 @@ const getRecentOrders = async (req, res) => {
 
 const getLowStock = async (req, res) => {
   try {
-    const { threshold = 10 } = req.query;
+    const { threshold = 10, limit = 100 } = req.query;
 
+    // Add LIMIT to prevent returning thousands of rows
     const result = await pool.query(
-      `SELECT p.*, c.name as category_name
+      `SELECT p.id, p.name, p.stock, p.price, p.image_url, c.name as category_name
        FROM products p
        LEFT JOIN categories c ON p.category_id = c.id
        WHERE p.stock <= $1 AND p.is_active = true
-       ORDER BY p.stock ASC`,
-      [threshold]
+       ORDER BY p.stock ASC
+       LIMIT $2`,
+      [threshold, Math.min(parseInt(limit) || 100, 500)]  // Cap at 500 max
     );
 
     successResponse(res, result.rows, 'Low stock products retrieved successfully');

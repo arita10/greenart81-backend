@@ -1,9 +1,7 @@
 const pool = require('../config/database');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response');
-const fs = require('fs');
-const path = require('path');
 
-// Helper function to get product images
+// Helper function to get product images for a single product
 const getProductImages = async (productId) => {
   try {
     const result = await pool.query(
@@ -17,6 +15,34 @@ const getProductImages = async (productId) => {
   } catch (error) {
     console.error('Error fetching product images:', error);
     return [];
+  }
+};
+
+// Batch fetch images for multiple products (fixes N+1 query problem)
+const getBatchProductImages = async (productIds) => {
+  if (!productIds || productIds.length === 0) return {};
+
+  try {
+    const result = await pool.query(
+      `SELECT product_id, id, image_url, thumb_url, medium_url, alt_text, is_primary, sort_order
+       FROM product_images
+       WHERE product_id = ANY($1)
+       ORDER BY product_id, sort_order ASC, created_at ASC`,
+      [productIds]
+    );
+
+    // Group images by product_id
+    const imagesByProduct = {};
+    for (const row of result.rows) {
+      if (!imagesByProduct[row.product_id]) {
+        imagesByProduct[row.product_id] = [];
+      }
+      imagesByProduct[row.product_id].push(row);
+    }
+    return imagesByProduct;
+  } catch (error) {
+    console.error('Error batch fetching product images:', error);
+    return {};
   }
 };
 
@@ -54,11 +80,15 @@ const calculateDiscount = (product) => {
   };
 };
 
-// Helper function to transform product data for frontend compatibility
+// Helper function to transform product data for frontend compatibility (single product)
 const transformProduct = async (product) => {
   // Fetch all images for this product
   const images = await getProductImages(product.id);
+  return transformProductWithImages(product, images);
+};
 
+// Transform product with pre-fetched images (used for batch operations)
+const transformProductWithImages = (product, images = []) => {
   // Find primary image or use first one
   const primaryImage = images.find(img => img.is_primary) || images[0];
 
@@ -97,6 +127,21 @@ const transformProduct = async (product) => {
   };
 };
 
+// Batch transform products with single image query (optimized for lists)
+const transformProductsBatch = async (products) => {
+  if (!products || products.length === 0) return [];
+
+  // Fetch all images in one query
+  const productIds = products.map(p => p.id);
+  const imagesByProduct = await getBatchProductImages(productIds);
+
+  // Transform each product with its pre-fetched images
+  return products.map(product => {
+    const images = imagesByProduct[product.id] || [];
+    return transformProductWithImages(product, images);
+  });
+};
+
 const getAllProducts = async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
@@ -117,8 +162,8 @@ const getAllProducts = async (req, res) => {
       [limit, offset]
     );
 
-    // Transform products for frontend compatibility
-    const transformedProducts = await Promise.all(result.rows.map(transformProduct));
+    // Transform products for frontend compatibility (batch optimized - single image query)
+    const transformedProducts = await transformProductsBatch(result.rows);
 
     paginatedResponse(res, transformedProducts, page, limit, total, 'Products retrieved successfully');
   } catch (error) {
@@ -152,24 +197,7 @@ const getProductById = async (req, res) => {
   }
 };
 
-const logDebug = (message, data) => {
-  try {
-    const logPath = path.join(__dirname, '../debug_product_create.md');
-    const timestamp = new Date().toISOString();
-    const logEntry = `\n[${timestamp}] ${message}\n\`\`\`json\n${JSON.stringify(data, null, 2)}\n\`\`\`\n`;
-    fs.appendFileSync(logPath, logEntry);
-  } catch (err) {
-    console.error('Failed to write debug log:', err);
-  }
-};
-
 const createProduct = async (req, res) => {
-  const debugInfo = {
-    step: 'start',
-    received_keys: Object.keys(req.body),
-    headers_content_type: req.headers['content-type']
-  };
-
   try {
     // Normalize body keys to lower case for insensitive matching
     const body = {};
@@ -205,14 +233,6 @@ const createProduct = async (req, res) => {
     }
 
     const finalImageUrl = imageInput || '';
-    
-    debugInfo.extracted = {
-      name,
-      price,
-      stock,
-      categoryInput,
-      finalImageUrl
-    };
 
     if (!name || !price) {
       return errorResponse(res, 'Name and price are required', 'MISSING_FIELDS', 400);
@@ -225,8 +245,7 @@ const createProduct = async (req, res) => {
       // Check if input is a numeric ID
       if (!isNaN(categoryInput) && parseInt(categoryInput) > 0) {
          finalCategoryId = parseInt(categoryInput);
-         debugInfo.category_resolution = { type: 'id_provided', id: finalCategoryId };
-      } 
+      }
       // Treat as name
       else {
         const categoryResult = await pool.query(
@@ -236,7 +255,6 @@ const createProduct = async (req, res) => {
 
         if (categoryResult.rows.length > 0) {
           finalCategoryId = categoryResult.rows[0].id;
-          debugInfo.category_resolution = { type: 'found_by_name', id: finalCategoryId, name: categoryResult.rows[0].name };
         } else {
           // Auto-create
           const newCatResult = await pool.query(
@@ -244,11 +262,8 @@ const createProduct = async (req, res) => {
             [categoryInput, 'Auto-created category']
           );
           finalCategoryId = newCatResult.rows[0].id;
-          debugInfo.category_resolution = { type: 'created_new', id: finalCategoryId, name: categoryInput };
         }
       }
-    } else {
-       debugInfo.category_resolution = { type: 'none_provided' };
     }
 
     const result = await pool.query(
@@ -280,16 +295,15 @@ const createProduct = async (req, res) => {
     );
 
     const transformed = await transformProduct(productWithCategory.rows[0]);
-    
+
     res.status(201).json({
       success: true,
       message: 'Product created successfully',
-      data: transformed,
-      debug_info: debugInfo
+      data: transformed
     });
-    
+
   } catch (error) {
-    console.error('❌ Create product error:', error);
+    console.error('Create product error:', error);
     errorResponse(res, 'Server error: ' + error.message, 'SERVER_ERROR', 500);
   }
 };

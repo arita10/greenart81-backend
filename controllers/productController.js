@@ -1,7 +1,7 @@
 const pool = require('../config/database');
 const { successResponse, errorResponse, paginatedResponse } = require('../utils/response');
 
-// Helper function to get product images
+// Helper function to get product images for a single product
 const getProductImages = async (productId) => {
   try {
     const result = await pool.query(
@@ -18,13 +18,40 @@ const getProductImages = async (productId) => {
   }
 };
 
+// Batch fetch images for multiple products (fixes N+1 query problem)
+const getBatchProductImages = async (productIds) => {
+  if (!productIds || productIds.length === 0) return {};
+
+  try {
+    const result = await pool.query(
+      `SELECT product_id, id, image_url, thumb_url, medium_url, alt_text, is_primary, sort_order
+       FROM product_images
+       WHERE product_id = ANY($1)
+       ORDER BY product_id, sort_order ASC, created_at ASC`,
+      [productIds]
+    );
+
+    // Group images by product_id
+    const imagesByProduct = {};
+    for (const row of result.rows) {
+      if (!imagesByProduct[row.product_id]) {
+        imagesByProduct[row.product_id] = [];
+      }
+      imagesByProduct[row.product_id].push(row);
+    }
+    return imagesByProduct;
+  } catch (error) {
+    console.error('Error batch fetching product images:', error);
+    return {};
+  }
+};
+
 // Helper function to calculate discount and sale price
-const calculateDiscount = (product) => {
+const calculateDiscount = (product, now = new Date()) => {
   const price = parseFloat(product.price) || 0;
   const discountPercentage = parseFloat(product.discount_percentage) || 0;
 
   // Check if sale is active (if dates are set)
-  const now = new Date();
   const saleStartDate = product.sale_start_date ? new Date(product.sale_start_date) : null;
   const saleEndDate = product.sale_end_date ? new Date(product.sale_end_date) : null;
 
@@ -52,16 +79,20 @@ const calculateDiscount = (product) => {
   };
 };
 
-// Helper function to transform product data for frontend compatibility
+// Helper function to transform product data for frontend compatibility (single product)
 const transformProduct = async (product) => {
   // Fetch all images for this product
   const images = await getProductImages(product.id);
+  return transformProductWithImages(product, images);
+};
 
+// Transform product with pre-fetched images (used for batch operations)
+const transformProductWithImages = (product, images = [], now = new Date()) => {
   // Find primary image or use first one
   const primaryImage = images.find(img => img.is_primary) || images[0];
 
   // Calculate discount information
-  const discount = calculateDiscount(product);
+  const discount = calculateDiscount(product, now);
 
   return {
     ...product,
@@ -88,6 +119,22 @@ const transformProduct = async (product) => {
     useAsSlider: product.use_as_slider || false, // Map use_as_slider to useAsSlider for frontend
     use_as_slider: product.use_as_slider || false // Keep both naming conventions
   };
+};
+
+// Batch transform products with single image query (optimized for lists)
+const transformProductsBatch = async (products) => {
+  if (!products || products.length === 0) return [];
+
+  // Fetch all images in one query
+  const productIds = products.map(p => p.id);
+  const imagesByProduct = await getBatchProductImages(productIds);
+  const now = new Date(); // Create date object once for all products
+
+  // Transform each product with its pre-fetched images
+  return products.map(product => {
+    const images = imagesByProduct[product.id] || [];
+    return transformProductWithImages(product, images, now);
+  });
 };
 
 const getAllProducts = async (req, res) => {
@@ -120,8 +167,8 @@ const getAllProducts = async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    // Transform products for frontend compatibility
-    const transformedProducts = await Promise.all(result.rows.map(transformProduct));
+    // Transform products for frontend compatibility (batch optimized - single image query)
+    const transformedProducts = await transformProductsBatch(result.rows);
 
     paginatedResponse(res, transformedProducts, page, limit, total, 'Products retrieved successfully');
   } catch (error) {
@@ -178,7 +225,8 @@ const getProductsByCategory = async (req, res) => {
       [`%${category}%`, limit, offset]
     );
 
-    const transformedProducts = await Promise.all(result.rows.map(transformProduct));
+    // Batch optimized - single image query for all products
+    const transformedProducts = await transformProductsBatch(result.rows);
     paginatedResponse(res, transformedProducts, page, limit, total, 'Products retrieved successfully');
   } catch (error) {
     console.error('Get products by category error:', error);
@@ -195,7 +243,8 @@ const getFeaturedProducts = async (req, res) => {
       [limit]
     );
 
-    const transformedProducts = await Promise.all(result.rows.map(transformProduct));
+    // Batch optimized - single image query for all products
+    const transformedProducts = await transformProductsBatch(result.rows);
     successResponse(res, transformedProducts, 'Featured products retrieved successfully');
   } catch (error) {
     console.error('Get featured products error:', error);
@@ -253,7 +302,8 @@ const searchProducts = async (req, res) => {
 
     const result = await pool.query(query, params);
 
-    const transformedProducts = await Promise.all(result.rows.map(transformProduct));
+    // Batch optimized - single image query for all products
+    const transformedProducts = await transformProductsBatch(result.rows);
     paginatedResponse(res, transformedProducts, page, limit, total, 'Search results retrieved successfully');
   } catch (error) {
     console.error('Search products error:', error);
@@ -289,11 +339,13 @@ const getSliderProducts = async (req, res) => {
          LIMIT $1`,
         [limit]
       );
-      const transformedProducts = await Promise.all(fallbackResult.rows.map(transformProduct));
+      // Batch optimized - single image query
+      const transformedProducts = await transformProductsBatch(fallbackResult.rows);
       return successResponse(res, transformedProducts, 'Slider products retrieved successfully (featured fallback)');
     }
 
-    const transformedProducts = await Promise.all(result.rows.map(transformProduct));
+    // Batch optimized - single image query for all products
+    const transformedProducts = await transformProductsBatch(result.rows);
     successResponse(res, transformedProducts, 'Slider products retrieved successfully');
   } catch (error) {
     console.error('Get slider products error:', error);

@@ -31,7 +31,10 @@
       "Bash(node scripts/add-qr-payment-table.js:*)",
       "Bash(node scripts/add-product-images-table.js:*)",
       "Bash(node scripts/check-product-images.js:*)",
-      "Bash(node test-api.js:*)"
+      "Bash(node test-api.js:*)",
+      "Bash(node scripts/add-discount-fields.js:*)",
+      "Bash(node test-discount.js:*)",
+      "Bash(node:*)"
     ]
   }
 }

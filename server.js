@@ -6,6 +6,15 @@ require('dotenv').config();
 
 const app = express();
 
+// Enable compression (gzip) for faster response times if module is available
+try {
+  const compression = require('compression');
+  app.use(compression());
+  console.log('✅ Compression middleware enabled');
+} catch (error) {
+  console.log('⚠️ Compression module not found, skipping. Run "npm install" to enable.');
+}
+
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
   credentials: true
