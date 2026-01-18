@@ -162,10 +162,10 @@ exports.uploadPaymentSlip = async (req, res) => {
       [order_id, req.user.id, qr_code_id || null, slip_image_url, amount, payment_date || new Date(), transaction_reference || null, notes || null]
     );
 
-    // Update order payment status
+    // Update order payment method (note: orders table uses 'status' for order status, payment_method exists)
     await pool.query(
       `UPDATE orders
-       SET payment_status = 'pending_verification', payment_method = 'qr_code', updated_at = CURRENT_TIMESTAMP
+       SET payment_method = 'qr_code', updated_at = CURRENT_TIMESTAMP
        WHERE id = $1`,
       [order_id]
     );
@@ -184,7 +184,7 @@ exports.getMyPaymentSlips = async (req, res) => {
   try {
     const result = await pool.query(
       `SELECT ps.*,
-              o.order_number, o.total_amount as order_total,
+              o.id as order_id, o.total_amount as order_total, o.status as order_status,
               qr.bank_name, qr.account_name,
               v.name as verified_by_name
        FROM payment_slips ps
@@ -241,10 +241,12 @@ exports.getAllPaymentSlips = async (req, res) => {
   try {
     const { status } = req.query;
 
+    // Note: orders table uses 'status' not 'payment_status', and doesn't have 'order_number'
+    // Using o.id as order identifier instead
     let query = `
       SELECT ps.*,
              u.name as customer_name, u.email as customer_email,
-             o.order_number, o.total_amount as order_total, o.payment_status,
+             o.id as order_id, o.total_amount as order_total, o.status as order_status,
              qr.bank_name, qr.account_name,
              v.name as verified_by_name
       FROM payment_slips ps
@@ -263,11 +265,16 @@ exports.getAllPaymentSlips = async (req, res) => {
 
     query += ' ORDER BY ps.created_at DESC';
 
+    console.log('📋 Fetching payment slips with status filter:', status || 'all');
+
     const result = await pool.query(query, params);
+
+    console.log(`✅ Found ${result.rows.length} payment slips`);
 
     successResponse(res, result.rows, 'Payment slips retrieved successfully');
   } catch (error) {
     console.error('Get all payment slips error:', error);
+    console.error('Error details:', error.message);
     errorResponse(res, 'Failed to retrieve payment slips', 'SERVER_ERROR', 500);
   }
 };
@@ -307,17 +314,18 @@ exports.verifyPaymentSlip = async (req, res) => {
     );
 
     // Update order status based on verification
+    // Note: orders table only has 'status' column, not separate payment_status/order_status
     if (status === 'approved') {
       await pool.query(
         `UPDATE orders
-         SET payment_status = 'completed', order_status = 'processing', updated_at = CURRENT_TIMESTAMP
+         SET status = 'processing', updated_at = CURRENT_TIMESTAMP
          WHERE id = $1`,
         [slip.order_id]
       );
     } else if (status === 'rejected') {
       await pool.query(
         `UPDATE orders
-         SET payment_status = 'failed', updated_at = CURRENT_TIMESTAMP
+         SET status = 'pending', updated_at = CURRENT_TIMESTAMP
          WHERE id = $1`,
         [slip.order_id]
       );
